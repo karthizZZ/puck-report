@@ -3,6 +3,7 @@
 
 Usage:
   python3 puck_toolkit.py setup                 # logos + converter (run once per workspace)
+  python3 puck_toolkit.py fetch 2026-10-20 out/slate.json   # one night's finals from the NHL stats feed
   python3 puck_toolkit.py scores  spec.json     # animated 'Last night' card (mp4) + still (png), 1080x1350
   python3 puck_toolkit.py recap   spec.json     # single-game recap video, 1080x1920
   python3 puck_toolkit.py reel    spec.json     # single-screen news reel (story or list), 1080x1920
@@ -23,6 +24,7 @@ WHITE, MUTED, ICE, RED = (242, 246, 250), (139, 160, 189), (92, 200, 255), (232,
 BG_TOP, BG_BOT = (9, 16, 30), (16, 34, 60)
 NAVY = np.array((9, 16, 30), np.float32) / 255.0
 LOGO_CODES = {"NJ": "NJD", "LA": "LAK", "SJ": "SJS", "TB": "TBL", "UTAH": "UTA"}
+FROM_API = {"NJD": "NJ", "LAK": "LA", "SJS": "SJ", "TBL": "TB"}
 NICK = {"ANA": "Ducks", "BOS": "Bruins", "BUF": "Sabres", "CAR": "Hurricanes", "CBJ": "Blue Jackets",
         "CGY": "Flames", "CHI": "Blackhawks", "COL": "Avalanche", "DAL": "Stars", "DET": "Red Wings",
         "EDM": "Oilers", "FLA": "Panthers", "LA": "Kings", "MIN": "Wild", "MTL": "Canadiens", "NJ": "Devils",
@@ -683,7 +685,7 @@ def cmd_scores(spec, base):
     fs, bs = (32, 50) if n > 8 else ((40, 64) if n > 5 else (46, 76))
 
     def nick(ab):
-        return NICK.get(ab, ab)
+        return NICK.get(FROM_API.get(ab, ab), ab)
 
     def row_base(g):
         wa, ws, la, ls = g[:4]
@@ -786,6 +788,79 @@ def cmd_scores(spec, base):
     return total
 
 
+# ------------------------------------------------------------------ data: official NHL stats feed
+NHL_API = "https://api-web.nhle.com/v1"
+API_CODES = {"NJD": "NJ", "LAK": "LA", "SJS": "SJ", "TBL": "TB"}
+
+
+def _get(url):
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": "PuckReport/1.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode())
+
+
+def _code(a):
+    return API_CODES.get(a, a)
+
+
+def _nm(x):
+    return (x or {}).get("default", "") if isinstance(x, dict) else (x or "")
+
+
+def fetch(date, out_path):
+    """Pull one night's finals (ET date) into a compact slate JSON for writing specs."""
+    sc = _get(f"{NHL_API}/score/{date}")
+    games = []
+    for g in sc.get("games", []):
+        a, h = g["awayTeam"], g["homeTeam"]
+        st = g.get("gameState", "")
+        item = {"id": g["id"], "state": st, "final": st in ("OFF", "FINAL"), "start_utc": g.get("startTimeUTC"),
+                "away": _code(a["abbrev"]), "home": _code(h["abbrev"]),
+                "away_score": a.get("score"), "home_score": h.get("score"),
+                "away_sog": a.get("sog"), "home_sog": h.get("sog"),
+                "finish": (g.get("gameOutcome") or {}).get("lastPeriodType", "REG"), "goals": []}
+        for gl in g.get("goals", []):
+            item["goals"].append({
+                "period": (gl.get("periodDescriptor") or {}).get("periodType", "REG") + str(gl.get("period", "")),
+                "time": gl.get("timeInPeriod"), "team": _code(gl.get("teamAbbrev", "")),
+                "scorer": f"{_nm(gl.get('firstName'))} {_nm(gl.get('lastName'))}".strip() or _nm(gl.get("name")),
+                "assists": [f"{_nm(x.get('firstName'))} {_nm(x.get('lastName'))}".strip() or _nm(x.get("name"))
+                            for x in gl.get("assists", [])],
+                "strength": gl.get("strength"), "modifier": gl.get("goalModifier"),
+                "score_after": f"{gl.get('awayScore')}-{gl.get('homeScore')}"})
+        if item["final"]:
+            try:  # team stats (hits, faceoffs, power play, blocks)
+                rr = _get(f"{NHL_API}/gamecenter/{g['id']}/right-rail")
+                item["team_stats"] = {t.get("category"): [t.get("awayValue"), t.get("homeValue")]
+                                      for t in rr.get("teamGameStats", [])}
+                item["three_stars"] = [f"{_nm(x.get('name'))} ({_code(x.get('teamAbbrev', ''))})"
+                                       for x in (rr.get("threeStars") or [])]
+            except Exception as e:
+                item["team_stats_error"] = str(e)
+            try:  # goalies
+                bx = _get(f"{NHL_API}/gamecenter/{g['id']}/boxscore")
+                pg = bx.get("playerByGameStats", {})
+                item["goalies"] = {side: [{"name": _nm(x.get("name")), "saves_shots": x.get("saveShotsAgainst"),
+                                           "decision": x.get("decision"), "toi": x.get("toi")}
+                                          for x in pg.get(side + "Team", {}).get("goalies", []) if x.get("toi") not in
+                                          (None, "00:00")]
+                                   for side in ("away", "home")}
+            except Exception as e:
+                item["goalies_error"] = str(e)
+        games.append(item)
+    out = {"date": date, "games": games}
+    try:
+        stn = _get(f"{NHL_API}/standings/now")
+        out["records"] = {_code(_nm(t.get("teamAbbrev"))): f"{t.get('wins')}-{t.get('losses')}-{t.get('otLosses')}"
+                          for t in stn.get("standings", [])}
+    except Exception as e:
+        out["records_error"] = str(e)
+    json.dump(out, open(out_path, "w"), indent=1)
+    fin = sum(1 for g in games if g["final"])
+    print(f"fetched {len(games)} games ({fin} final) for {date} -> {out_path}")
+
+
 # ------------------------------------------------------------------ checks + setup
 def contact(video, out, n=12, width=270):
     """Grab n evenly spaced frames into one sheet for a visual check."""
@@ -837,6 +912,8 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "help"
     if cmd == "setup":
         setup()
+    elif cmd == "fetch":
+        fetch(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else f"slate_{sys.argv[2]}.json")
     elif cmd in ("scores", "recap", "reel"):
         path = sys.argv[2]
         base = os.path.dirname(os.path.abspath(path))

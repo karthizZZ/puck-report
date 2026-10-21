@@ -10,6 +10,7 @@ Needs: python3 with numpy, pillow, scipy; ffmpeg; node/npm. Fonts: Inter Display
 
 ## Commands
 ```
+python3 puck_toolkit.py fetch 2026-10-20 out/slate.json   # night's games from the NHL stats feed (needs api-web.nhle.com)
 python3 puck_toolkit.py scores  spec.json   # 1080x1350 animated score card + still PNG
 python3 puck_toolkit.py recap   spec.json   # 1080x1920 single-game recap
 python3 puck_toolkit.py reel    spec.json   # 1080x1920 single-screen news reel (story or list)

@@ -4,3 +4,4 @@ out/
 *.mp4
 *.png
 *.wav
+__pycache__/
