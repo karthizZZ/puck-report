@@ -1,0 +1,7 @@
+{"out": "oilers_wild.mp4", "slides": [
+ {"type": "hook", "tag": "FINAL/OT · OCT 20", "headline": "McDAVID MAKES\nHISTORY", "line": "Edmonton 4, Minnesota 3 (OT)"},
+ {"type": "score", "tag": "FINAL SCORE · OT", "teams": [["Edmonton", "Oilers", 4], ["Minnesota", "Wild", 3]], "line": "Bouchard wins it in overtime."},
+ {"type": "periods", "rows": [["1st period", "Oilers strike first", "EDM 1–0"], ["2nd period", "Two more for Edmonton", "EDM 3–0"], ["3rd period", "Wild score twice", "3–3"], ["Overtime", "Bouchard ends it", "EDM 4–3"]]},
+ {"type": "tiles", "tag": "RECORD BOOK", "title": "FASTEST\nTO 20 ASSISTS", "tiles": [["9", "games"], ["3", "assists tonight"], ["10", "old record"]], "note": "Faster than Gretzky, Lemieux and Lafontaine."},
+ {"type": "numbers", "title": "Oilers vs Wild", "left": "EDM", "right": "MIN", "stats": [["Shots", 32, 30], ["Power play goals", 3, 0], ["Faceoffs won", 45, 55, "{}%"]], "note": "Draisaitl scored twice on the power play."},
+ {"type": "outro"}]}
